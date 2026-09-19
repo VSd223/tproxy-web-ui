@@ -12,13 +12,9 @@ ask()  { echo -e "${W}$1${D}"; }
 # ─── Root check ──────────────────────────────────────────────────────────
 [[ "${EUID}" -ne 0 ]] && fail "Запустите от root: sudo bash install.sh"
 
-# ─── Исправление ошибки BASH_SOURCE при запуске через curl ──────────────
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" &>/dev/null && pwd)"
-
 # ─── Скачивание файлов панели и сайтов ──────────────────────────────────
-# Скачиваем ресурсы (папки admin и sites) из оригинального репозитория,
-# чтобы вам не приходилось хранить их у себя на GitHub.
-ASSETS_REPO="https://github.com/prominbro/tg-web"
+# Скачиваем ресурсы ИМЕННО из ВАШЕГО репозитория
+ASSETS_REPO="https://github.com/VSd223/tproxy-web-ui"
 
 info "Скачиваю компоненты Web-панели и сайты..."
 TEMP_DIR="$(mktemp -d /tmp/tproxy-deploy.XXXXXX)"
@@ -65,8 +61,9 @@ SITE_KEY="${SITES[$SITE_NUM]:-telegram}"
 read -rp "Домен сервера (например proxy.example.com): " DOMAIN
 [[ -z "$DOMAIN" ]] && fail "Домен не может быть пустым"
 
-# Генерируем email автоматически, чтобы не спрашивать пользователя
-EMAIL="admin@${DOMAIN}"
+# Вернул вопрос про почту, но с автозаполнением!
+read -rp "Email для SSL (Enter = admin@${DOMAIN}): " EMAIL
+EMAIL="${EMAIL:-admin@${DOMAIN}}"
 
 # ─── Secret Admin Path Generation ───────────────────────────────────────
 DEFAULT_ADMIN_PATH="panel_$(openssl rand -hex 5)"
