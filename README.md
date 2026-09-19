@@ -24,11 +24,13 @@
 
 ---
 
-## 🚀 Установка (В один клик)
+## 🚀 Установка
 
 > ⚠️ **Рекомендация:** Устанавливайте скрипт на чистый сервер (Clean OS), чтобы избежать конфликтов с портами 80/443 и уже установленными веб-серверами.
 
-Подключитесь к вашему серверу по SSH и вставьте эту магическую команду:
+Подключитесь к вашему серверу по SSH и выполните следующие команды по очереди:
 
 ```bash
-sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/VSd223/tproxy-web-ui/main/install.sh)"
+git clone https://github.com/VSd223/tproxy-web-ui.git
+cd tproxy-web-ui
+sudo bash install.sh
