@@ -20,6 +20,9 @@ def run(*args):
 
 def show_logs(errors_only=False):
     try:
+        if not os.path.exists(LOG_FILE):
+            print(f"Файл логов {LOG_FILE} пока не создан.")
+            return
         with open(LOG_FILE, encoding="utf-8", errors="replace") as stream:
             lines = stream.readlines()[-200:]
             if errors_only:
@@ -32,6 +35,8 @@ def show_logs(errors_only=False):
 
 
 def load():
+    if not os.path.exists(PROFILES):
+        return {"profiles": []}
     with open(PROFILES, encoding="utf-8") as stream:
         return json.load(stream)
 
@@ -41,7 +46,7 @@ def hostname():
         with open("/etc/tproxy-admin.env", encoding="utf-8") as stream:
             for line in stream:
                 if line.startswith("PUBLIC_HOSTNAME="):
-                    return line.rstrip().split("=", 1)[1]
+                    return line.rstrip().split("=", 1)[1].strip()
     except OSError:
         pass
     return input("Домен сервера: ").strip()
@@ -61,32 +66,49 @@ def save(data):
 def show_profiles():
     host = hostname()
     print("\n--- Список устройств и профилей ---")
-    for item in load().get("profiles", []):
-        sec = item['secret']
-        print(f"• [{item['name']}] Транспорт: {item['carrier_mode']}")
+    profiles = load().get("profiles", [])
+    if not profiles:
+        print("Список профилей пуст.\n")
+        return
+    for item in profiles:
+        sec = item.get("secret", "")
+        limits = item.get("limits") or {}
+        max_s = limits.get("max_sessions", 0)
+        limit_desc = f"{max_s} устр." if max_s > 0 else "Без лимита (бесконечно устройств)"
+        print(f"• [{item.get('name')}] Транспорт: {item.get('carrier_mode', 'https')} | Лимит: {limit_desc}")
         print(f"  Секрет: {sec}")
         print(f"  Ссылка: https://t.me/webproxy?server={host}&secret={sec}")
         print(f"  Прямая: tg://webproxy?server={host}&secret={sec}\n")
 
 
 def add_profile():
-    name = input("Имя устройства/пользователя (например iPhone-Main): ").strip()
+    name = input("Имя устройства/пользователя (например Phone-Main): ").strip()
+    if not name:
+        print("Ошибка: имя не может быть пустым!")
+        return
+
     backend = input("Backend [127.0.0.1:9067]: ").strip() or "127.0.0.1:9067"
     print("Доступные транспорты ядра:", ", ".join(PROTOCOLS))
     protocol = input("Протокол [https]: ").strip() or "https"
     if protocol not in PROTOCOLS:
-        raise ValueError("Неподдерживаемый протокол")
+        raise ValueError(f"Неподдерживаемый протокол: {protocol}")
     
-    pad = input("Использовать dd... случайное дополнение (Random Padding)? [y/N]: ").strip().lower()
+    pad = input("Использовать dd... случайное дополнение (Random Padding)? [Y/n]: ").strip().lower()
     raw_secret = secrets.token_hex(16)
-    secret = ("dd" + raw_secret) if pad == "y" else raw_secret
+    secret = ("dd" + raw_secret) if (pad != "n") else raw_secret
 
-    limit_str = input("Лимит устройств (max_sessions, 1 = строго одно устройство, 0 = без лимита) [1]: ").strip() or "1"
-    max_sessions = int(limit_str)
+    limit_str = input("Лимит устройств (max_sessions, 0 = без лимита / бесконечно, 1-256 = лимит) [0]: ").strip() or "0"
+    try:
+        max_sessions = int(limit_str)
+    except ValueError:
+        max_sessions = 0
+
+    if max_sessions < 0 or max_sessions > 256:
+        raise ValueError("Лимит устройств должен быть от 0 (без ограничений) до 256!")
 
     data = load()
-    if any(item.get("name") == name for item in data["profiles"]):
-        raise ValueError("Профиль с таким именем уже существует")
+    if any(item.get("name") == name for item in data.get("profiles", [])):
+        raise ValueError("Профиль с таким именем уже существует!")
     
     new_item = {
         "name": name,
@@ -94,12 +116,13 @@ def add_profile():
         "backend": backend,
         "carrier_mode": protocol,
     }
+    # 0 = без лимита (не добавляем limits.max_sessions)
     if max_sessions > 0:
         new_item["limits"] = {"max_sessions": max_sessions}
 
-    data["profiles"].append(new_item)
+    data.setdefault("profiles", []).append(new_item)
     save(data)
-    print(f"Устройство {name} добавлено успешно!")
+    print(f"Устройство \"{name}\" успешно добавлено!")
 
 
 def set_promo_channel():
@@ -114,9 +137,9 @@ def set_promo_channel():
         with open(MTPROXY_ENV, "r", encoding="utf-8") as f:
             for line in f:
                 if line.startswith("MTPROXY_WORKERS="):
-                    workers = line.strip().split("=", 1)[1]
+                    workers = line.strip().split("=", 1)[1].strip('"\'')
                 elif line.startswith("MTPROXY_MAX_CONNECTIONS="):
-                    max_conn = line.strip().split("=", 1)[1]
+                    max_conn = line.strip().split("=", 1)[1].strip('"\'')
 
     with open(MTPROXY_ENV, "w", encoding="utf-8") as f:
         f.write(f"MTPROXY_WORKERS={workers}\n")
@@ -139,7 +162,12 @@ def main():
         print("7) Метрики            8) Перезапустить релей")
         print("0) Выход")
         print("══════════════════════════════════════════")
-        choice = input("Выбор: ").strip()
+        try:
+            choice = input("Выбор: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 0
+
         try:
             if choice == "1":
                 print("Relay (tproxy):", run("systemctl", "is-active", "tproxy-server.service"))
@@ -161,7 +189,9 @@ def main():
                 print(run("systemctl", "restart", "tproxy-server.service", "mtproxy.service"))
             elif choice == "0":
                 return 0
-        except (OSError, ValueError, EOFError) as exc:
+            else:
+                print("Неизвестный пункт меню.")
+        except Exception as exc:
             print(f"Ошибка: {exc}")
 
 
