@@ -9,23 +9,23 @@ fail() { echo -e "${R}[✗]${D} $*"; exit 1; }
 info() { echo -e "${C}[i]${D} $*"; }
 ask()  { echo -e "${W}$1${D}"; }
 
-REPO_URL="${TPROXY_REPO:-https://github.com/prominbro/tg-web}"
-
 # ─── Root check ──────────────────────────────────────────────────────────
 [[ "${EUID}" -ne 0 ]] && fail "Запустите от root: sudo bash install.sh"
 
-# ─── Detect source ──────────────────────────────────────────────────────
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ -d "$SCRIPT_DIR/sites/_shared" ]]; then
-  DEPLOY_DIR="$SCRIPT_DIR"
-else
-  info "Скачиваю tproxy-deploy..."
-  TEMP_DIR="$(mktemp -d /tmp/tproxy-deploy.XXXXXX)"
-  trap 'rm -rf "$TEMP_DIR"' EXIT
-  curl -sL "${REPO_URL}/archive/refs/heads/main.tar.gz" | tar -xz -C "$TEMP_DIR" --strip-components=1
-  DEPLOY_DIR="$TEMP_DIR"
-  ok "Репозиторий скачан"
-fi
+# ─── Исправление ошибки BASH_SOURCE при запуске через curl ──────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" &>/dev/null && pwd)"
+
+# ─── Скачивание файлов панели и сайтов ──────────────────────────────────
+# Скачиваем ресурсы (папки admin и sites) из оригинального репозитория,
+# чтобы вам не приходилось хранить их у себя на GitHub.
+ASSETS_REPO="https://github.com/prominbro/tg-web"
+
+info "Скачиваю компоненты Web-панели и сайты..."
+TEMP_DIR="$(mktemp -d /tmp/tproxy-deploy.XXXXXX)"
+trap 'rm -rf "$TEMP_DIR"' EXIT
+curl -sL "${ASSETS_REPO}/archive/refs/heads/main.tar.gz" | tar -xz -C "$TEMP_DIR" --strip-components=1
+DEPLOY_DIR="$TEMP_DIR"
+ok "Файлы панели загружены"
 
 GATEWAY="nginx"
 if systemctl is-active --quiet caddy 2>/dev/null || command -v caddy >/dev/null 2>&1; then
@@ -34,7 +34,7 @@ fi
 
 echo -e "
 ${B}╔══════════════════════════════════════════════════════════╗
-║${W}     tproxy-deploy — Скрытный WEB-прокси для Telegram   ${B}║
+║${W}     TProxy Web UI — Скрытный WEB-прокси для Telegram   ${B}║
 ║${W}          (HTTP/2, HTTP/3, WebSocket, Защита от сканеров)${B}║
 ╚══════════════════════════════════════════════════════════╝${D}
 "
@@ -64,8 +64,9 @@ SITE_KEY="${SITES[$SITE_NUM]:-telegram}"
 # ─── Domain & email ─────────────────────────────────────────────────────
 read -rp "Домен сервера (например proxy.example.com): " DOMAIN
 [[ -z "$DOMAIN" ]] && fail "Домен не может быть пустым"
-read -rp "Email для SSL сертификата: " EMAIL
-[[ -z "$EMAIL" ]] && fail "Email не может быть пустым"
+
+# Генерируем email автоматически, чтобы не спрашивать пользователя
+EMAIL="admin@${DOMAIN}"
 
 # ─── Secret Admin Path Generation ───────────────────────────────────────
 DEFAULT_ADMIN_PATH="panel_$(openssl rand -hex 5)"
@@ -76,30 +77,9 @@ ADMIN_PATH="${ADMIN_PATH#/}"
 ADMIN_PATH="${ADMIN_PATH%/}"
 
 # ─── Management Mode ───────────────────────────────────────────────────
-ask "Способ управления:"
-echo -e "  ${C}1${D}) Веб-панель управления (клиенты, лимиты, QR-коды, смена сайтов, канал)"
-echo -e "  ${C}2${D}) Консоль (только терминал)"
-echo ""
-read -rp "Выбор [1]: " MGMT_NUM
-MGMT_NUM="${MGMT_NUM:-1}"
-
-if [[ "$MGMT_NUM" == "1" ]]; then
-  WEB_PANEL="yes"
-  CARRIER="https"
-  PROMO_TAG=""
-else
-  WEB_PANEL="no"
-  ask "Выберите режим транспорта:"
-  echo -e "  ${C}1${D}) https           — классический скрытный (по умолчанию)"
-  echo -e "  ${C}2${D}) https-lanes     — параллельные HTTPS-потоки"
-  echo -e "  ${C}3${D}) websocket       — быстрый мультиплексный WS"
-  echo -e "  ${C}4${D}) websocket-lanes — параллельный WebSocket"
-  read -rp "Режим [1-4]: " MODE_NUM
-  MODE_NUM="${MODE_NUM:-1}"
-  declare -A MODES=([1]="https" [2]="https-lanes" [3]="websocket" [4]="websocket-lanes")
-  CARRIER="${MODES[$MODE_NUM]:-https}"
-  read -rp "Тег спонсорского канала от @MTProxybot (Enter если нет): " PROMO_TAG
-fi
+WEB_PANEL="yes"
+CARRIER="https"
+PROMO_TAG=""
 
 # ─── Install dependencies ───────────────────────────────────────────────
 info "Устанавливаю системные зависимости..."
@@ -119,8 +99,9 @@ ok "Зависимости установлены"
 if ! command -v go &>/dev/null; then
   info "Устанавливаю Go 1.23..."
   GO_VER="1.23.1"
+  rm -rf /usr/local/go
   curl -sL "https://go.dev/dl/go${GO_VER}.linux-amd64.tar.gz" | tar -C /usr/local -xzf -
-  echo 'export PATH=$PATH:/usr/local/go/bin' >> /etc/profile.d/go.sh
+  echo 'export PATH=$PATH:/usr/local/go/bin' > /etc/profile.d/go.sh
   export PATH=$PATH:/usr/local/go/bin
   ok "Go установлен"
 fi
@@ -168,7 +149,6 @@ if [[ ! -s /etc/tproxy-server/token.key ]]; then
 fi
 chmod 0600 /etc/tproxy-server/token.key
 
-# Сохраняем базу профилей (если уже существует - не перезаписываем)
 if [[ ! -s /etc/tproxy-server/profiles.json ]]; then
   cat > /etc/tproxy-server/profiles.json <<PROF
 {
@@ -304,10 +284,9 @@ chmod 0755 /usr/local/sbin/mtproxy-launcher
 info "Копирую шаблоны сайтов в /opt/tproxy-sites..."
 cp -r "${DEPLOY_DIR}/sites/"* /opt/tproxy-sites/ 2>/dev/null || true
 
-# Активируем выбранный сайт в /srv/tproxy-site
 if [[ ! -f /srv/tproxy-site/index.html ]]; then
-  cp -r "${DEPLOY_DIR}/sites/_shared/." /srv/tproxy-site/
-  cp -r "${DEPLOY_DIR}/sites/${SITE_KEY}/." /srv/tproxy-site/
+  cp -r "${DEPLOY_DIR}/sites/_shared/." /srv/tproxy-site/ 2>/dev/null || true
+  cp -r "${DEPLOY_DIR}/sites/${SITE_KEY}/." /srv/tproxy-site/ 2>/dev/null || true
   echo "${SITE_KEY}" > /srv/tproxy-site/.site_preset
 fi
 chmod -R a+rX /srv/tproxy-site /opt/tproxy-sites
@@ -426,7 +405,7 @@ ${DOMAIN} {
 CADDYEOF
   systemctl reload caddy 2>/dev/null || systemctl restart caddy
 else
-  # Nginx config with HTTP/2 and custom secret admin location
+  # Nginx config with Custom Secret Admin Location
   cat > "/etc/nginx/conf.d/tproxy.conf" <<NGINXEOF
 server {
     listen 80;
@@ -490,7 +469,6 @@ ${W}Пароль:${D}                ${ADMIN_PASSWORD}
 
 ${W}Ссылка для Telegram (WEB-прокси):${D}
 https://t.me/webproxy?server=${DOMAIN}&secret=${SECRET}
-tg://webproxy?server=${DOMAIN}&secret=${SECRET}
 
 ${C}Управление в терминале:${D} sudo tproxy-admin
 "
