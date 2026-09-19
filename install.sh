@@ -12,16 +12,17 @@ ask()  { echo -e "${W}$1${D}"; }
 # ─── Root check ──────────────────────────────────────────────────────────
 [[ "${EUID}" -ne 0 ]] && fail "Запустите от root: sudo bash install.sh"
 
-# ─── Скачивание файлов панели и сайтов ──────────────────────────────────
-# Скачиваем ресурсы ИМЕННО из ВАШЕГО репозитория
-ASSETS_REPO="https://github.com/VSd223/tproxy-web-ui"
+# ─── Скачивание файлов панели и сайтов (НАДЕЖНЫЙ МЕТОД) ────────────────
+ASSETS_REPO="https://github.com/VSd223/tproxy-web-ui.git"
 
 info "Скачиваю компоненты Web-панели и сайты..."
 TEMP_DIR="$(mktemp -d /tmp/tproxy-deploy.XXXXXX)"
 trap 'rm -rf "$TEMP_DIR"' EXIT
-curl -sL "${ASSETS_REPO}/archive/refs/heads/main.tar.gz" | tar -xz -C "$TEMP_DIR" --strip-components=1
+
+# Используем git clone вместо скачивания архива - это гарантирует наличие всех папок
+git clone --depth 1 "$ASSETS_REPO" "$TEMP_DIR" --quiet || fail "Не удалось скачать репозиторий с GitHub!"
 DEPLOY_DIR="$TEMP_DIR"
-ok "Файлы панели загружены"
+ok "Файлы панели успешно загружены"
 
 GATEWAY="nginx"
 if systemctl is-active --quiet caddy 2>/dev/null || command -v caddy >/dev/null 2>&1; then
@@ -61,7 +62,6 @@ SITE_KEY="${SITES[$SITE_NUM]:-telegram}"
 read -rp "Домен сервера (например proxy.example.com): " DOMAIN
 [[ -z "$DOMAIN" ]] && fail "Домен не может быть пустым"
 
-# Вернул вопрос про почту, но с автозаполнением!
 read -rp "Email для SSL (Enter = admin@${DOMAIN}): " EMAIL
 EMAIL="${EMAIL:-admin@${DOMAIN}}"
 
