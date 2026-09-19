@@ -1,7 +1,7 @@
 
 # 🛡 TProxy Web UI (Stealth Telegram Proxy)
 
-![Version](https://img.shields.io/badge/Version-4.1%20Stable-blue?style=for-the-badge&logo=rocket)
+![Version](https://img.shields.io/badge/Version-1.0%20Stable-blue?style=for-the-badge&logo=rocket)
 ![OS](https://img.shields.io/badge/OS-Ubuntu%20%7C%20Debian-green?style=for-the-badge&logo=linux)
 ![License](https://img.shields.io/badge/License-MIT-purple?style=for-the-badge)
 ![Telegram](https://img.shields.io/badge/Protocol-WEB--Proxy-2CA5E0?style=for-the-badge&logo=telegram)
