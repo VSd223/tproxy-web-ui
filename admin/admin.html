@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>tproxy — Панель управления</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+:root{
+  --bg:#0a0d14; --bg-side:#0d1119; --bg-card:#131826; --bg-card-2:#171d2d; --bg-input:#0b0f18;
+  --border:#232a3b; --border-soft:#1a2032;
+  --accent:#6d6bf5; --accent-2:#5a58e0; --accent-glow:rgba(109,107,245,.18);
+  --teal:#2dd4bf; --success:#22c55e; --warning:#eab308; --danger:#ef4444; --info:#38bdf8;
+  --text:#e7ebf3; --text-dim:#8891a8; --text-faint:#5b6478;
+  --radius:12px; --radius-sm:8px;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;overflow-x:hidden}
+svg.icon{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+/* ---------- LOGIN ---------- */
+.login-wrapper{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
+  background:radial-gradient(circle at 20% 15%,var(--accent-glow),transparent 45%),radial-gradient(circle at 85% 85%,rgba(45,212,191,.1),transparent 40%),var(--bg)}
+.login-card{width:100%;max-width:380px;background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:32px 28px;box-shadow:0 30px 60px rgba(0,0,0,.5)}
+.login-mark{width:52px;height:52px;border-radius:14px;background:linear-gradient(145deg,var(--accent),var(--accent-2));display:flex;align-items:center;justify-content:center;margin:0 auto 16px;box-shadow:0 8px 24px var(--accent-glow)}
+.login-mark svg{width:26px;height:26px;stroke:#fff}
+.login-title{font-size:19px;font-weight:700;text-align:center;color:#fff}
+.login-sub{font-size:12.5px;text-align:center;color:var(--text-dim);margin-bottom:24px}
+.login-card label{display:block;font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:6px}
+.login-card .form-group{margin-bottom:14px}
+.login-card input{width:100%;background:var(--bg-input);border:1px solid var(--border);color:#fff;padding:10px 12px;border-radius:var(--radius-sm);font-size:13.5px}
+.login-card input:focus{outline:none;border-color:var(--accent)}
+#loginAlert{color:#fca5a5;font-size:12.5px;margin-bottom:12px;display:none;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);padding:8px 10px;border-radius:8px}
+
+/* ---------- SHELL ---------- */
+.app-shell{display:flex;min-height:100vh}
+.sidebar{width:236px;background:var(--bg-side);border-right:1px solid var(--border-soft);display:flex;flex-direction:column;position:fixed;top:0;bottom:0;left:0;z-index:50;transition:transform .2s ease;padding-top:env(safe-area-inset-top,0)}
+.sidebar-brand{display:flex;align-items:center;gap:10px;padding:18px 18px 16px}
+.brand-mark{width:34px;height:34px;border-radius:9px;background:linear-gradient(145deg,var(--accent),var(--accent-2));display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.brand-mark svg{width:18px;height:18px;stroke:#fff}
+.brand-name{font-weight:700;color:#fff;font-size:15px;line-height:1.15}
+.brand-sub{font-size:10.5px;color:var(--text-faint);font-weight:600;letter-spacing:.3px}
+.side-nav{flex:1;padding:6px 12px;overflow-y:auto}
+.side-link{width:100%;display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:var(--radius-sm);background:transparent;border:none;color:var(--text-dim);font-size:13.5px;font-weight:600;cursor:pointer;text-align:left;margin-bottom:2px;transition:.12s}
+.side-link:hover{background:var(--bg-card-2);color:#fff}
+.side-link.active{background:var(--accent-glow);color:#c7c6ff}
+.side-link.active svg{stroke:#a5a3ff}
+.sidebar-foot{padding:14px 16px;border-top:1px solid var(--border-soft);display:flex;flex-direction:column;gap:10px;padding-bottom:calc(14px + env(safe-area-inset-bottom,0))}
+.host-chip{font-size:11.5px;color:var(--text-faint);font-family:ui-monospace,monospace;background:var(--bg-input);border:1px solid var(--border);padding:6px 9px;border-radius:7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.app-main{flex:1;margin-left:236px;display:flex;flex-direction:column;min-height:100vh}
+.topbar{position:sticky;top:0;z-index:30;background:rgba(10,13,20,.85);backdrop-filter:blur(10px);border-bottom:1px solid var(--border-soft);padding:14px 22px;padding-top:calc(14px + env(safe-area-inset-top,0));display:flex;align-items:center;gap:14px}
+.hamburger{display:none;background:var(--bg-card);border:1px solid var(--border);width:36px;height:36px;border-radius:9px;align-items:center;justify-content:center;color:var(--text-dim);cursor:pointer}
+.topbar-title{font-size:16px;font-weight:700;color:#fff;flex:1}
+.topbar-status{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim)}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--success);box-shadow:0 0 0 3px rgba(34,197,94,.18)}
+.live-dot.off{background:var(--danger);box-shadow:0 0 0 3px rgba(239,68,68,.18)}
+
+.content{padding:22px;flex:1}
+.sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:45}
+.sidebar-backdrop.open{display:block}
+
+/* ---------- STATS ---------- */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:22px}
+.stat-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:15px;display:flex;gap:12px;align-items:flex-start}
+.stat-icon{width:38px;height:38px;border-radius:10px;background:var(--bg-card-2);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--accent)}
+.stat-title{font-size:11px;color:var(--text-faint);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
+.stat-value{font-size:18px;font-weight:700;color:#fff}
+.stat-desc{font-size:11.5px;color:var(--text-faint);margin-top:1px}
+
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:11.5px;font-weight:600}
+.badge-success{background:rgba(34,197,94,.13);color:#4ade80;border:1px solid rgba(34,197,94,.28)}
+.badge-danger{background:rgba(239,68,68,.13);color:#f87171;border:1px solid rgba(239,68,68,.28)}
+.badge-info{background:rgba(56,189,248,.13);color:#38bdf8;border:1px solid rgba(56,189,248,.28)}
+.badge-warning{background:rgba(234,179,8,.13);color:#facc15;border:1px solid rgba(234,179,8,.28)}
+.badge-neutral{background:rgba(148,163,184,.12);color:#94a3b8;border:1px solid rgba(148,163,184,.22)}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:18px}
+.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px}
+.card-title{font-size:15.5px;font-weight:700;color:#fff;display:flex;align-items:center;gap:9px}
+.card-title svg{color:var(--accent)}
+.card-hint{font-size:12.5px;color:var(--text-dim);margin-top:3px}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 15px;font-size:13px;font-weight:600;border-radius:var(--radius-sm);border:1px solid transparent;cursor:pointer;transition:.12s;text-decoration:none;color:#fff}
+.btn svg{width:15px;height:15px}
+.btn-primary{background:var(--accent)}
+.btn-primary:hover{background:var(--accent-2)}
+.btn-success{background:var(--success)}
+.btn-success:hover{background:#16a34a}
+.btn-danger{background:var(--danger)}
+.btn-danger:hover{background:#dc2626}
+.btn-secondary{background:var(--bg-card-2);border-color:var(--border);color:var(--text)}
+.btn-secondary:hover{background:#232a3d}
+.btn-sm{padding:5px 10px;font-size:12px}
+
+.table-container{width:100%;overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-sm)}
+table{width:100%;border-collapse:collapse;text-align:left}
+th{background:var(--bg-input);color:var(--text-faint);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;padding:11px 14px;border-bottom:1px solid var(--border)}
+td{padding:12px 14px;border-bottom:1px solid var(--border-soft);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--bg-card-2)}
+
+.form-group{margin-bottom:14px}
+label{display:block;font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:6px}
+input,select,textarea{width:100%;background:var(--bg-input);border:1px solid var(--border);color:#fff;padding:9px 12px;border-radius:var(--radius-sm);font-size:13.5px;font-family:inherit}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
+textarea{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;min-height:220px;resize:vertical}
+small{color:var(--text-faint);font-size:11px}
+
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.68);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px;opacity:0;pointer-events:none;transition:.15s}
+.modal-backdrop.open{opacity:1;pointer-events:auto}
+.modal{background:var(--bg-card);border:1px solid var(--border);border-radius:16px;width:100%;max-width:520px;box-shadow:0 25px 50px rgba(0,0,0,.5);overflow:hidden}
+.modal-header{padding:15px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.modal-title{font-size:15.5px;font-weight:700;color:#fff}
+.modal-close{background:none;border:none;color:var(--text-faint);cursor:pointer;width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center}
+.modal-close:hover{background:var(--bg-card-2);color:#fff}
+.modal-body{padding:18px;max-height:75vh;overflow-y:auto}
+.modal-footer{padding:13px 18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;background:rgba(0,0,0,.15)}
+
+.log-box{background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);padding:13px;font-family:ui-monospace,monospace;font-size:12px;max-height:460px;overflow-y:auto;white-space:pre-wrap;color:#b8c0d4}
+#toast{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom,0));right:20px;left:auto;padding:11px 18px;border-radius:10px;background:var(--accent);color:#fff;font-weight:600;font-size:13px;box-shadow:0 12px 24px rgba(0,0,0,.4);transform:translateY(90px);opacity:0;transition:.25s;z-index:150;max-width:calc(100% - 40px)}
+#toast.show{transform:translateY(0);opacity:1}
+
+/* ---------- BOTTOM NAV (mobile) ---------- */
+.bottom-nav{display:none;position:fixed;bottom:0;left:0;right:0;z-index:40;background:rgba(13,17,25,.92);backdrop-filter:blur(12px);border-top:1px solid var(--border-soft);padding:6px 4px calc(6px + env(safe-area-inset-bottom,0));overflow-x:auto;gap:2px}
+.bottom-link{flex:1;min-width:58px;display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:none;color:var(--text-faint);font-size:9.5px;font-weight:600;padding:6px 2px;border-radius:8px;cursor:pointer}
+.bottom-link.active{color:#a5a3ff}
+.bottom-link.active svg{stroke:#a5a3ff}
+
+@media (max-width:860px){
+  .sidebar{transform:translateX(-100%)}
+  .sidebar.open{transform:translateX(0);box-shadow:0 0 40px rgba(0,0,0,.5)}
+  .app-main{margin-left:0}
+  .hamburger{display:flex}
+  .bottom-nav{display:flex}
+  .content{padding:16px;padding-bottom:78px}
+  .card{padding:16px}
+}
+</style>
+</head>
+<body>
+
+<div id="toast">Уведомление</div>
+
+<svg style="display:none">
+<symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V5z"/></symbol>
+<symbol id="i-devices" viewBox="0 0 24 24"><rect x="4" y="3" width="14" height="18" rx="2"/><path d="M9 18h4"/></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 4 5.8 4 9s-1.5 6.4-4 9c-2.5-2.6-4-5.8-4-9s1.5-6.4 4-9z"/></symbol>
+<symbol id="i-mega" viewBox="0 0 24 24"><path d="M3 11v3a2 2 0 0 0 2 2h1l3 5V4L6 9H5a2 2 0 0 0-2 2z"/><path d="M13 8a3 3 0 0 1 0 8"/><path d="M17 5a7 7 0 0 1 0 14"/></symbol>
+<symbol id="i-bars" viewBox="0 0 24 24"><line x1="5" y1="20" x2="5" y2="11"/><line x1="12" y1="20" x2="12" y2="5"/><line x1="19" y1="20" x2="19" y2="14"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6z"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="15" y2="16"/></symbol>
+<symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18a4.5 4.5 0 0 1-.5-9A5.5 5.5 0 0 1 17 8a4 4 0 0 1-1 8H7z"/></symbol>
+<symbol id="i-code" viewBox="0 0 24 24"><polyline points="8 6 3 12 8 18"/><polyline points="16 6 21 12 16 18"/></symbol>
+<symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+<symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+<symbol id="i-qr" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><line x1="14" y1="14" x2="14" y2="21"/><line x1="21" y1="14" x2="21" y2="21"/><line x1="17" y1="17" x2="21" y2="17"/></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.5 14a9 9 0 1 1-2.1-9.4L23 10"/></symbol>
+<symbol id="i-menu" viewBox="0 0 24 24"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></symbol>
+<symbol id="i-users" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+<symbol id="i-server" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="7" rx="1.5"/><rect x="2" y="14" width="20" height="7" rx="1.5"/><line x1="6" y1="6.5" x2="6.01" y2="6.5"/><line x1="6" y1="17.5" x2="6.01" y2="17.5"/></symbol>
+<symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></symbol>
+<symbol id="i-dice" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1"/><circle cx="16" cy="16" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="16" cy="8" r="1"/><circle cx="8" cy="16" r="1"/></symbol>
+<symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2 19 4M16 8l2 2M19 5l3 3"/></symbol>
+<symbol id="i-save" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></symbol>
+</svg>
+
+<!-- AUTH VIEW -->
+<div id="loginView" class="login-wrapper">
+  <div class="login-card">
+    <div class="login-mark"><svg viewBox="0 0 24 24" stroke="#fff" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-shield"/></svg></div>
+    <div class="login-title">tproxy Dashboard</div>
+    <div class="login-sub">Управление скрытным WEB-прокси</div>
+    <div id="loginAlert"></div>
+    <form onsubmit="event.preventDefault(); doLogin();">
+      <div class="form-group">
+        <label>Логин</label>
+        <input type="text" id="loginUser" autocomplete="username" value="admin" required>
+      </div>
+      <div class="form-group">
+        <label>Пароль</label>
+        <input type="password" id="loginPass" autocomplete="current-password" placeholder="Введите пароль" required autofocus>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%;margin-top:6px;">Войти</button>
+    </form>
+  </div>
+</div>
+
+<!-- DASHBOARD VIEW -->
+<div id="dashboardView" style="display:none;">
+  <div class="app-shell">
+    <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar(false)"></div>
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-mark"><svg class="icon" style="width:18px;height:18px"><use href="#i-shield"/></svg></div>
+        <div><div class="brand-name">tproxy</div><div class="brand-sub">WEB-PROXY&nbsp;·&nbsp;v1</div></div>
+      </div>
+      <nav class="side-nav" id="sideNav">
+        <button class="side-link" data-tab="clientsTab" onclick="switchTab('clientsTab')"><svg class="icon"><use href="#i-devices"/></svg>Устройства</button>
+        <button class="side-link" data-tab="camouflageTab" onclick="switchTab('camouflageTab')"><svg class="icon"><use href="#i-globe"/></svg>Сайт-маскировка</button>
+        <button class="side-link" data-tab="promoTab" onclick="switchTab('promoTab')"><svg class="icon"><use href="#i-mega"/></svg>Спонсорский канал</button>
+        <button class="side-link" data-tab="metricsTab" onclick="switchTab('metricsTab')"><svg class="icon"><use href="#i-bars"/></svg>Метрики</button>
+        <button class="side-link" data-tab="logsTab" onclick="switchTab('logsTab')"><svg class="icon"><use href="#i-file"/></svg>Логи сервера</button>
+        <button class="side-link" data-tab="warpTab" onclick="switchTab('warpTab')"><svg class="icon"><use href="#i-cloud"/></svg>WARP</button>
+        <button class="side-link" data-tab="configTab" onclick="switchTab('configTab')"><svg class="icon"><use href="#i-code"/></svg>JSON Конфиг</button>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="host-chip" id="navHost">—</div>
+        <button onclick="doLogout()" class="btn btn-secondary btn-sm" style="width:100%;"><svg class="icon" style="width:14px;height:14px"><use href="#i-logout"/></svg>Выйти</button>
+      </div>
+    </aside>
+
+    <div class="app-main">
+      <header class="topbar">
+        <button class="hamburger" id="hamburgerBtn" onclick="toggleSidebar()"><svg class="icon"><use href="#i-menu"/></svg></button>
+        <div class="topbar-title" id="topbarTitle">Устройства</div>
+        <div class="topbar-status"><span class="live-dot" id="topbarDot"></span><span id="topbarStatus">проверка…</span></div>
+      </header>
+
+      <main class="content">
+        <section class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon"><svg class="icon"><use href="#i-server"/></svg></div>
+            <div>
+              <div class="stat-title">Релей (tproxy-server)</div>
+              <div class="stat-value" id="statRelay"><span class="badge badge-warning"><span class="dot"></span>Проверка</span></div>
+              <div class="stat-desc">Порт 8080 (HTTPS/WSS)</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon"><svg class="icon"><use href="#i-users"/></svg></div>
+            <div>
+              <div class="stat-title">Активные сессии</div>
+              <div class="stat-value" id="statSessions">0</div>
+              <div class="stat-desc">Клиентов онлайн сейчас</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon"><svg class="icon"><use href="#i-globe"/></svg></div>
+            <div>
+              <div class="stat-title">Сайт-маскировка</div>
+              <div class="stat-value" id="statSitePreset" style="font-size:14px;"><span class="badge badge-info">Загрузка...</span></div>
+              <div class="stat-desc">Открывается в браузере (порт 443)</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon"><svg class="icon"><use href="#i-mega"/></svg></div>
+            <div>
+              <div class="stat-title">Спонсорский канал</div>
+              <div class="stat-value" id="statPromo"><span class="badge badge-warning"><span class="dot"></span>Нет</span></div>
+              <div class="stat-desc" id="statPromoDesc">@MTProxybot tag</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon"><svg class="icon"><use href="#i-cloud"/></svg></div>
+            <div>
+              <div class="stat-title">Cloudflare WARP</div>
+              <div class="stat-value" id="statWarp"><span class="badge badge-neutral"><span class="dot"></span>—</span></div>
+              <div class="stat-desc">Исходящий туннель релея</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB 1: Clients -->
+        <div id="clientsTab" class="tab-content">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h2 class="card-title"><svg class="icon"><use href="#i-devices"/></svg>Список устройств</h2>
+                <p class="card-hint">Защищённый транспорт: трафик маскируется под обычное посещение сайта.</p>
+              </div>
+              <button class="btn btn-primary" onclick="openAddClientModal()"><svg class="icon" style="width:14px;height:14px"><use href="#i-plus"/></svg>Добавить устройство</button>
+            </div>
+            <div class="table-container">
+              <table>
+                <thead><tr><th>Устройство</th><th>Протокол</th><th>Онлайн</th><th>Лимит</th><th>Секрет</th><th style="text-align:right;">Действия</th></tr></thead>
+                <tbody id="clientsTableBody"><tr><td colspan="6" style="text-align:center;color:var(--text-faint);">Загрузка...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: Camouflage -->
+        <div id="camouflageTab" class="tab-content" style="display:none;">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h2 class="card-title"><svg class="icon"><use href="#i-globe"/></svg>Сайт для маскировки трафика</h2>
+                <p class="card-hint">Открывается в браузере при прямом переходе на ваш домен.</p>
+              </div>
+              <button class="btn btn-primary" onclick="applyPreset('random')"><svg class="icon" style="width:14px;height:14px"><use href="#i-dice"/></svg>Случайный сайт</button>
+            </div>
+            <div style="margin-bottom:24px;">
+              <label>Выбрать из готовых шаблонов</label>
+              <div style="display:flex;gap:8px;max-width:520px;">
+                <select id="presetSelect"><option value="">Загрузка шаблонов...</option></select>
+                <button class="btn btn-secondary" onclick="applySelectedPreset()">Применить</button>
+              </div>
+            </div>
+            <hr style="border:0;border-top:1px solid var(--border);margin:24px 0;">
+            <div>
+              <h3 style="font-size:14.5px;margin-bottom:6px;color:#fff;display:flex;align-items:center;gap:8px;"><svg class="icon" style="width:16px;height:16px;color:var(--accent)"><use href="#i-upload"/></svg>Загрузить собственный сайт (ZIP)</h3>
+              <p class="card-hint" style="margin-bottom:14px;">Внутри архива должен быть <code>index.html</code>, стили и изображения.</p>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <input type="file" id="zipFileInput" accept=".zip" style="max-width:320px;">
+                <button class="btn btn-success" onclick="uploadZipSite()"><svg class="icon" style="width:14px;height:14px"><use href="#i-upload"/></svg>Загрузить</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 3: Promo -->
+        <div id="promoTab" class="tab-content" style="display:none;">
+          <div class="card">
+            <div class="card-header"><h2 class="card-title"><svg class="icon"><use href="#i-mega"/></svg>Закреплённый спонсорский канал</h2></div>
+            <p class="card-hint" style="margin-bottom:16px;">Канал закрепляется вверху списка чатов у всех пользователей вашего прокси.</p>
+            <div style="background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;margin-bottom:18px;">
+              <div style="color:#fff;font-weight:600;margin-bottom:6px;font-size:13px;">Как получить тег:</div>
+              <ol style="color:var(--text-dim);font-size:12.5px;margin-left:18px;line-height:1.7;">
+                <li>Откройте бота <a href="https://t.me/MTProxybot" target="_blank" style="color:var(--info);">@MTProxybot</a> в Telegram.</li>
+                <li>Отправьте команду <code>/newproxy</code>.</li>
+                <li>Укажите домен вашего сервера и порт <code>443</code>.</li>
+                <li>Укажите 32-hex секрет любого устройства (без dd).</li>
+                <li>Бот выдаст <strong>прокси-тег</strong>. Вставьте его ниже.</li>
+              </ol>
+            </div>
+            <div class="form-group" style="max-width:440px;">
+              <label for="promoTagInput">Proxy Tag из @MTProxybot</label>
+              <input type="text" id="promoTagInput" maxlength="32" placeholder="Оставьте пустым для отключения">
+            </div>
+            <button class="btn btn-success" onclick="savePromoTag()"><svg class="icon" style="width:14px;height:14px"><use href="#i-save"/></svg>Сохранить тег</button>
+          </div>
+        </div>
+
+        <!-- TAB 4: Metrics -->
+        <div id="metricsTab" class="tab-content" style="display:none;">
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title"><svg class="icon"><use href="#i-bars"/></svg>Метрики релея (Prometheus)</h2>
+              <button class="btn btn-secondary btn-sm" onclick="loadMetrics()"><svg class="icon" style="width:13px;height:13px"><use href="#i-refresh"/></svg>Обновить</button>
+            </div>
+            <div class="log-box" id="metricsRaw">Загрузка метрик...</div>
+          </div>
+        </div>
+
+        <!-- TAB 5: Logs -->
+        <div id="logsTab" class="tab-content" style="display:none;">
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title"><svg class="icon"><use href="#i-file"/></svg>Журнал (/var/log/tproxy/tproxy.log)</h2>
+              <div style="display:flex;gap:6px;">
+                <button class="btn btn-secondary btn-sm" id="btnLogErrors" onclick="toggleLogFilter()">Только ошибки</button>
+                <button class="btn btn-primary btn-sm" onclick="loadLogs()"><svg class="icon" style="width:13px;height:13px"><use href="#i-refresh"/></svg>Обновить</button>
+              </div>
+            </div>
+            <div class="log-box" id="logsBox">Загрузка...</div>
+          </div>
+        </div>
+
+        <!-- TAB 6: WARP -->
+        <div id="warpTab" class="tab-content" style="display:none;">
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title"><svg class="icon"><use href="#i-cloud"/></svg>Cloudflare WARP</h2>
+              <div>
+                <button class="btn btn-success btn-sm" onclick="setWarp('connect')">Подключить</button>
+                <button class="btn btn-danger btn-sm" onclick="setWarp('disconnect')">Отключить</button>
+              </div>
+            </div>
+            <p id="warpStatusText" style="margin-bottom:14px;color:var(--text-dim);">Проверка статуса...</p>
+            <div class="log-box" id="warpRaw">Загрузка...</div>
+          </div>
+        </div>
+
+        <!-- TAB 7: JSON Config -->
+        <div id="configTab" class="tab-content" style="display:none;">
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title"><svg class="icon"><use href="#i-code"/></svg>Редактор profiles.json</h2>
+              <button class="btn btn-success btn-sm" onclick="saveRawProfiles()"><svg class="icon" style="width:13px;height:13px"><use href="#i-save"/></svg>Сохранить и применить</button>
+            </div>
+            <div class="form-group"><textarea id="rawProfilesJson" spellcheck="false"></textarea></div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <nav class="bottom-nav" id="bottomNav">
+    <button class="bottom-link" data-tab="clientsTab" onclick="switchTab('clientsTab')"><svg class="icon" style="width:20px;height:20px"><use href="#i-devices"/></svg>Устройства</button>
+    <button class="bottom-link" data-tab="camouflageTab" onclick="switchTab('camouflageTab')"><svg class="icon" style="width:20px;height:20px"><use href="#i-globe"/></svg>Сайт</button>
+    <button class="bottom-link" data-tab="promoTab" onclick="switchTab('promoTab')"><svg class="icon" style="width:20px;height:20px"><use href="#i-mega"/></svg>Канал</button>
+    <button class="bottom-link" data-tab="metricsTab" onclick="switchTab('metricsTab')"><svg class="icon" style="width:20px;height:20px"><use href="#i-bars"/></svg>Метрики</button>
+    <button class="bottom-link" data-tab="logsTab" onclick="switchTab('logsTab')"><svg class="icon" style="width:20px;height:20px"><use href="#i-file"/></svg>Логи</button>
+    <button class="bottom-link" data-tab="warpTab" onclick="switchTab('warpTab')"><svg class="icon" style="width:20px;height:20px"><use href="#i-cloud"/></svg>WARP</button>
+    <button class="bottom-link" data-tab="configTab" onclick="switchTab('configTab')"><svg class="icon" style="width:20px;height:20px"><use href="#i-code"/></svg>JSON</button>
+  </nav>
+</div>
+
+<!-- MODAL: Add / Edit Client -->
+<div class="modal-backdrop" id="clientModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 class="modal-title" id="clientModalTitle">Добавить устройство</h3>
+      <button onclick="closeModal('clientModal')" class="modal-close"><svg class="icon"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <form onsubmit="event.preventDefault(); submitClientForm();">
+        <input type="hidden" id="clientOrigName" value="">
+        <div class="form-group"><label>Имя устройства</label><input type="text" id="clientName" placeholder="например: Телефон, Компьютер" required></div>
+        <div class="form-group">
+          <label>Протокол переносчика (Carrier)</label>
+          <select id="clientCarrier">
+            <option value="https">https (Стандартный незаметный HTTP-туннель)</option>
+            <option value="https-lanes">https-lanes (Изолированные параллельные потоки)</option>
+            <option value="websocket">websocket (Быстрый мультиплексный WS)</option>
+            <option value="websocket-lanes">websocket-lanes (Параллельный WS — максимальная скорость)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Лимит одновременных устройств (max_sessions)</label>
+          <input type="number" id="clientLimit" min="0" max="64" value="1" placeholder="1 = строго одно устройство, 0 = без лимита">
+          <small>1 означает, что под этим ключом сможет работать только одно устройство.</small>
+        </div>
+        <div class="form-group"><label>Бэкенд</label><input type="text" id="clientBackend" value="127.0.0.1:9067" required></div>
+        <div class="form-group">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <label style="margin:0;">Секретный ключ (34 hex с dd)</label>
+            <div style="display:flex;gap:4px;">
+              <button type="button" class="btn btn-secondary btn-sm" onclick="generateRandomSecret(true)"><svg class="icon" style="width:12px;height:12px"><use href="#i-key"/></svg>dd… (DPI)</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="generateRandomSecret(false)">Обычный</button>
+            </div>
+          </div>
+          <input type="text" id="clientSecret" maxlength="64" placeholder="Оставьте пустым для автогенерации">
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('clientModal')">Отмена</button>
+      <button class="btn btn-primary" id="clientSubmitBtn" onclick="submitClientForm()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: QR & Connect -->
+<div class="modal-backdrop" id="qrModal">
+  <div class="modal" style="max-width:400px;">
+    <div class="modal-header">
+      <h3 class="modal-title" id="qrModalTitle">Подключение</h3>
+      <button onclick="closeModal('qrModal')" class="modal-close"><svg class="icon"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="modal-body" style="text-align:center;">
+      <div id="qrcodeBox" style="background:#fff;padding:12px;border-radius:10px;display:inline-block;margin-bottom:14px;"></div>
+      <div class="form-group" style="text-align:left;">
+        <label>Ссылка для подключения:</label>
+        <div style="display:flex;gap:6px;">
+          <input type="text" id="qrLinkInput" readonly>
+          <button class="btn btn-secondary" onclick="copyInput('qrLinkInput')"><svg class="icon" style="width:14px;height:14px"><use href="#i-copy"/></svg></button>
+        </div>
+      </div>
+      <a id="qrTgLinkBtn" href="#" class="btn btn-primary" style="width:100%;margin-top:6px;">Открыть в Telegram</a>
+    </div>
+  </div>
+</div>
+
+<script>
+let state = { hostname: window.location.hostname, profiles: [], onlyErrors: false, refreshTimer: null };
+const tabTitles = { clientsTab:"Устройства", camouflageTab:"Сайт-маскировка", promoTab:"Спонсорский канал", metricsTab:"Метрики", logsTab:"Логи сервера", warpTab:"WARP", configTab:"JSON Конфиг" };
+
+function getApiUrl(endpoint){ const base = window.location.pathname.replace(/\/+$/, ""); return `${base}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`; }
+
+function showToast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),3000); }
+
+async function api(path, options={}){
+  const url = getApiUrl(path);
+  const res = await fetch(url, options);
+  const data = await res.json().catch(()=>({}));
+  if (res.status===401 || data.auth===false){ showLogin(); throw new Error(data.error||"Необходима авторизация"); }
+  if (!res.ok) throw new Error(data.error||("Ошибка: "+res.status));
+  return data;
+}
+
+function showLogin(){ document.getElementById("loginView").style.display="flex"; document.getElementById("dashboardView").style.display="none"; if (state.refreshTimer) clearInterval(state.refreshTimer); }
+
+function showDashboard(){
+  document.getElementById("loginView").style.display="none";
+  document.getElementById("dashboardView").style.display="block";
+  refreshAll();
+  if (!state.refreshTimer) state.refreshTimer = setInterval(refreshDashboardStatus, 4000);
+}
+
+async function doLogin(){
+  const u=document.getElementById("loginUser").value.trim(), p=document.getElementById("loginPass").value;
+  const alertBox=document.getElementById("loginAlert"); alertBox.style.display="none";
+  try{
+    await api("api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:u,password:p})});
+    showDashboard();
+  }catch(err){ alertBox.textContent=err.message; alertBox.style.display="block"; }
+}
+
+async function doLogout(){ await api("api/logout",{method:"POST"}).catch(()=>{}); location.reload(); }
+
+function toggleSidebar(force){
+  const sb=document.getElementById("sidebar"), bd=document.getElementById("sidebarBackdrop");
+  const open = force!==undefined ? force : !sb.classList.contains("open");
+  sb.classList.toggle("open", open);
+  bd.classList.toggle("open", open);
+}
+
+function switchTab(tabId){
+  document.querySelectorAll(".tab-content").forEach(el=>el.style.display="none");
+  document.querySelectorAll("[data-tab]").forEach(el=>el.classList.remove("active"));
+  document.getElementById(tabId).style.display="block";
+  document.querySelectorAll(`[data-tab="${tabId}"]`).forEach(el=>el.classList.add("active"));
+  document.getElementById("topbarTitle").textContent = tabTitles[tabId] || "";
+  toggleSidebar(false);
+
+  if (tabId==='logsTab') loadLogs();
+  if (tabId==='metricsTab') loadMetrics();
+  if (tabId==='warpTab') loadWarp();
+  if (tabId==='promoTab') loadPromoTag();
+  if (tabId==='camouflageTab') loadCamouflage();
+}
+
+function openModal(id){ document.getElementById(id).classList.add("open"); }
+function closeModal(id){ document.getElementById(id).classList.remove("open"); }
+
+function generateRandomSecret(withDd=true){
+  const hex = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b=>b.toString(16).padStart(2,'0')).join('');
+  document.getElementById("clientSecret").value = withDd ? ("dd"+hex) : hex;
+}
+
+function openAddClientModal(){
+  document.getElementById("clientModalTitle").textContent="Добавить устройство";
+  document.getElementById("clientOrigName").value="";
+  document.getElementById("clientName").value="";
+  document.getElementById("clientCarrier").value="https";
+  document.getElementById("clientLimit").value="1";
+  document.getElementById("clientBackend").value="127.0.0.1:9067";
+  document.getElementById("clientSubmitBtn").textContent="Добавить";
+  generateRandomSecret(true);
+  openModal("clientModal");
+}
+
+function openEditClientModal(pJson){
+  const p=JSON.parse(decodeURIComponent(pJson));
+  document.getElementById("clientModalTitle").textContent=`Редактировать: ${p.name}`;
+  document.getElementById("clientOrigName").value=p.name;
+  document.getElementById("clientName").value=p.name;
+  document.getElementById("clientCarrier").value=p.carrier_mode||"https";
+  document.getElementById("clientLimit").value=p.max_sessions||0;
+  document.getElementById("clientBackend").value=p.backend||"127.0.0.1:9067";
+  document.getElementById("clientSecret").value=p.secret||"";
+  document.getElementById("clientSubmitBtn").textContent="Сохранить изменения";
+  openModal("clientModal");
+}
+
+async function submitClientForm(){
+  const origName=document.getElementById("clientOrigName").value.trim();
+  const name=document.getElementById("clientName").value.trim();
+  const carrier=document.getElementById("clientCarrier").value;
+  const backend=document.getElementById("clientBackend").value.trim();
+  const max_sessions=parseInt(document.getElementById("clientLimit").value||"0");
+  let secret=document.getElementById("clientSecret").value.trim().toLowerCase();
+  if (!name) return showToast("Укажите имя устройства");
+  if (!secret){ generateRandomSecret(true); secret=document.getElementById("clientSecret").value; }
+  const endpoint = origName ? "api/profiles/edit" : "api/profiles/add";
+  const payload = { orig_name: origName, name, carrier_mode: carrier, backend, secret, max_sessions };
+  try{
+    await api(endpoint,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    closeModal("clientModal");
+    showToast(origName?"Изменения сохранены":"Устройство добавлено");
+    loadProfiles();
+  }catch(err){ showToast(err.message); }
+}
+
+async function deleteClient(name){
+  if (!confirm(`Удалить конфигурацию "${name}"?`)) return;
+  try{
+    await api("api/profiles/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name})});
+    showToast("Устройство удалено");
+    loadProfiles();
+  }catch(err){ showToast(err.message); }
+}
+
+function openQrModal(name, linkHttps, linkTg){
+  document.getElementById("qrModalTitle").textContent=`Подключение: ${name}`;
+  document.getElementById("qrLinkInput").value=linkHttps;
+  document.getElementById("qrTgLinkBtn").href=linkTg;
+  const qbox=document.getElementById("qrcodeBox"); qbox.innerHTML="";
+  new QRCode(qbox,{text:linkTg||linkHttps,width:170,height:170,colorDark:"#000000",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});
+  openModal("qrModal");
+}
+
+function copyInput(id){ const el=document.getElementById(id); el.select(); navigator.clipboard.writeText(el.value); showToast("Скопировано в буфер обмена"); }
+function copyText(txt){ navigator.clipboard.writeText(txt); showToast("Скопировано"); }
+
+async function loadProfiles(){
+  try{
+    const data=await api("api/profiles");
+    state.profiles=data.profiles||[];
+    state.hostname=data.hostname||window.location.hostname;
+    document.getElementById("navHost").textContent=state.hostname;
+    const tbody=document.getElementById("clientsTableBody");
+    if (state.profiles.length===0){
+      tbody.innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--text-faint);">Нет настроенных устройств</td></tr>`;
+    } else {
+      tbody.innerHTML = state.profiles.map(p=>{
+        const limitText = (p.max_sessions>0) ? `${p.max_sessions} устр.` : `<span style="color:var(--text-faint);">Без лимита</span>`;
+        const activeText = (p.active_sessions>0)
+          ? `<span class="badge badge-success"><span class="dot"></span>${p.active_sessions} онлайн</span>`
+          : `<span class="badge badge-neutral"><span class="dot"></span>0</span>`;
+        const pEncoded = encodeURIComponent(JSON.stringify(p));
+        return `<tr>
+          <td><strong style="color:#fff;">${escapeHtml(p.name)}</strong></td>
+          <td><span class="badge badge-info">${escapeHtml(p.carrier_mode)}</span></td>
+          <td>${activeText}</td>
+          <td><span class="badge badge-warning">${limitText}</span></td>
+          <td><div style="display:flex;align-items:center;gap:6px;">
+              <code style="background:var(--bg-input);padding:2px 6px;border-radius:5px;font-size:11.5px;">${escapeHtml(p.secret)}</code>
+              <button class="btn btn-secondary btn-sm" style="padding:3px 6px;" onclick="copyText('${p.secret}')"><svg class="icon" style="width:12px;height:12px"><use href="#i-copy"/></svg></button>
+            </div></td>
+          <td style="text-align:right;"><div style="display:inline-flex;gap:4px;">
+              <button class="btn btn-primary btn-sm" onclick="openQrModal('${escapeHtml(p.name)}', '${p.link_https}', '${p.link_tg}')"><svg class="icon" style="width:13px;height:13px"><use href="#i-qr"/></svg></button>
+              <button class="btn btn-secondary btn-sm" onclick="openEditClientModal('${pEncoded}')"><svg class="icon" style="width:13px;height:13px"><use href="#i-edit"/></svg></button>
+              <button class="btn btn-danger btn-sm" onclick="deleteClient('${escapeHtml(p.name)}')"><svg class="icon" style="width:13px;height:13px"><use href="#i-trash"/></svg></button>
+            </div></td>
+        </tr>`;
+      }).join("");
+    }
+    document.getElementById("rawProfilesJson").value = JSON.stringify(state.profiles.map(p=>{
+      const item={ name:p.name, secret:p.secret, backend:p.backend, carrier_mode:p.carrier_mode };
+      if (p.max_sessions>0) item.limits={ max_sessions:p.max_sessions };
+      return item;
+    }), null, 2);
+  }catch(err){ console.error("Profiles error:", err); }
+}
+
+async function loadCamouflage(){
+  try{
+    const data=await api("api/site");
+    const select=document.getElementById("presetSelect");
+    select.innerHTML=(data.presets||[]).map(p=>`<option value="${p.key}" ${p.key===data.current?'selected':''}>${p.name}</option>`).join("");
+    document.getElementById("statSitePreset").innerHTML=`<span class="badge badge-info">${escapeHtml(data.current_name)}</span>`;
+  }catch(e){}
+}
+
+async function applySelectedPreset(){ const key=document.getElementById("presetSelect").value; await applyPreset(key); }
+
+async function applyPreset(key){
+  try{
+    const res=await api("api/site/preset",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key})});
+    showToast(`Установлен сайт: ${res.name}`);
+    loadCamouflage();
+  }catch(err){ showToast(err.message); }
+}
+
+async function uploadZipSite(){
+  const fileInput=document.getElementById("zipFileInput");
+  if (!fileInput.files || fileInput.files.length===0) return showToast("Выберите ZIP-файл");
+  const file=fileInput.files[0];
+  try{
+    showToast("Загрузка сайта...");
+    const res=await fetch(getApiUrl("api/site/upload"),{method:"POST",headers:{"Content-Type":"application/zip"},body:file});
+    const data=await res.json();
+    if (!res.ok) throw new Error(data.error||"Ошибка загрузки");
+    showToast("Сайт успешно установлен!");
+    fileInput.value="";
+    loadCamouflage();
+  }catch(err){ showToast(err.message); }
+}
+
+async function loadPromoTag(){
+  try{ const data=await api("api/promo"); document.getElementById("promoTagInput").value=data.tag||""; updatePromoBadge(data.tag); }catch(e){}
+}
+
+async function savePromoTag(){
+  const tag=document.getElementById("promoTagInput").value.trim().toLowerCase();
+  try{
+    await api("api/promo",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tag})});
+    showToast(tag?"Спонсорский тег сохранён":"Тег удалён");
+    updatePromoBadge(tag);
+  }catch(err){ showToast(err.message); }
+}
+
+function updatePromoBadge(tag){
+  const statPromo=document.getElementById("statPromo");
+  if (tag){
+    statPromo.innerHTML=`<span class="badge badge-success"><span class="dot"></span>Привязан</span>`;
+    document.getElementById("statPromoDesc").textContent=tag.substring(0,10)+"...";
+  } else {
+    statPromo.innerHTML=`<span class="badge badge-warning"><span class="dot"></span>Не задан</span>`;
+    document.getElementById("statPromoDesc").textContent="Без канала";
+  }
+}
+
+async function refreshDashboardStatus(){
+  try{
+    const [health, metrics, promo] = await Promise.all([
+      api("api/health").catch(()=>({ok:false,relay:"offline",admin:"offline",warp:false})),
+      api("api/metrics").catch(()=>({available:false,values:{}})),
+      api("api/promo").catch(()=>({tag:""}))
+    ]);
+    const statRelay=document.getElementById("statRelay");
+    const relayOk = health.relay==="active";
+    statRelay.innerHTML = relayOk
+      ? `<span class="badge badge-success"><span class="dot"></span>Работает</span>`
+      : `<span class="badge badge-danger"><span class="dot"></span>${escapeHtml(health.relay)}</span>`;
+    document.getElementById("topbarDot").classList.toggle("off", !relayOk);
+    document.getElementById("topbarStatus").textContent = relayOk ? "релей активен" : "релей недоступен";
+
+    const statWarp=document.getElementById("statWarp");
+    statWarp.innerHTML = health.warp
+      ? `<span class="badge badge-success"><span class="dot"></span>Подключен</span>`
+      : `<span class="badge badge-neutral"><span class="dot"></span>Отключен</span>`;
+
+    updatePromoBadge(promo.tag);
+    const vals=metrics.values||{};
+    document.getElementById("statSessions").textContent = vals["tproxy_sessions_live"]!==undefined ? vals["tproxy_sessions_live"] : "0";
+  }catch(e){}
+}
+
+async function loadMetrics(){
+  try{ const data=await api("api/metrics"); document.getElementById("metricsRaw").textContent=JSON.stringify(data,null,2); }
+  catch(err){ document.getElementById("metricsRaw").textContent="Ошибка метрик: "+err.message; }
+}
+
+async function loadLogs(){
+  try{
+    const data=await api(`api/logs?errors=${state.onlyErrors?"1":"0"}`);
+    const lines=data.lines||[];
+    document.getElementById("logsBox").textContent = lines.length ? lines.join("\n") : "Записей нет.";
+    document.getElementById("logsBox").scrollTop = document.getElementById("logsBox").scrollHeight;
+  }catch(err){ document.getElementById("logsBox").textContent="Ошибка логов: "+err.message; }
+}
+
+function toggleLogFilter(){
+  state.onlyErrors=!state.onlyErrors;
+  document.getElementById("btnLogErrors").textContent = state.onlyErrors ? "Показать все логи" : "Только ошибки";
+  loadLogs();
+}
+
+async function loadWarp(){
+  try{
+    const data=await api("api/warp");
+    document.getElementById("warpStatusText").textContent = data.installed
+      ? (data.connected ? "Статус: Подключен к Cloudflare" : "Статус: Установлен, но отключён")
+      : "Утилита warp-cli не установлена";
+    document.getElementById("warpRaw").textContent = data.details || "Нет данных";
+  }catch(err){ document.getElementById("warpRaw").textContent="Ошибка WARP: "+err.message; }
+}
+
+async function setWarp(action){
+  try{
+    await api("api/warp",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action})});
+    showToast(action==="connect" ? "WARP подключается..." : "WARP отключён");
+    setTimeout(loadWarp,1500);
+  }catch(err){ showToast(err.message); }
+}
+
+async function saveRawProfiles(){
+  try{
+    const parsed=JSON.parse(document.getElementById("rawProfilesJson").value);
+    await api("api/profiles",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({profiles:parsed})});
+    showToast("Конфигурация сохранена");
+    loadProfiles();
+  }catch(err){ showToast("Ошибка JSON: "+err.message); }
+}
+
+function escapeHtml(str){ return String(str||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+async function refreshAll(){ await Promise.all([loadProfiles(), loadCamouflage(), loadPromoTag(), refreshDashboardStatus()]); switchTab('clientsTab'); }
+
+(async function init(){
+  try{ await api("api/health"); showDashboard(); }
+  catch(e){ showLogin(); }
+})();
+</script>
+</body>
+</html>
