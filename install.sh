@@ -12,14 +12,13 @@ ask()  { echo -e "${W}$1${D}"; }
 # ─── Root check ──────────────────────────────────────────────────────────
 [[ "${EUID}" -ne 0 ]] && fail "Запустите от root: sudo bash install.sh"
 
-# ─── Скачивание файлов панели и сайтов (НАДЕЖНЫЙ МЕТОД) ────────────────
+# ─── Скачивание файлов панели и сайтов ──────────────────────────────────
 ASSETS_REPO="https://github.com/VSd223/tproxy-web-ui.git"
 
 info "Скачиваю компоненты Web-панели и сайты..."
 TEMP_DIR="$(mktemp -d /tmp/tproxy-deploy.XXXXXX)"
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
-# Используем git clone вместо скачивания архива - это гарантирует наличие всех папок
 git clone --depth 1 "$ASSETS_REPO" "$TEMP_DIR" --quiet || fail "Не удалось скачать репозиторий с GitHub!"
 DEPLOY_DIR="$TEMP_DIR"
 ok "Файлы панели успешно загружены"
@@ -65,18 +64,25 @@ read -rp "Домен сервера (например proxy.example.com): " DOMA
 read -rp "Email для SSL (Enter = admin@${DOMAIN}): " EMAIL
 EMAIL="${EMAIL:-admin@${DOMAIN}}"
 
-# ─── Secret Admin Path Generation ───────────────────────────────────────
-DEFAULT_ADMIN_PATH="panel_$(openssl rand -hex 5)"
-ask "Секретный путь для веб-панели (для защиты от сканеров):"
-read -rp "Путь [${DEFAULT_ADMIN_PATH}]: " USER_ADMIN_PATH
-ADMIN_PATH="${USER_ADMIN_PATH:-$DEFAULT_ADMIN_PATH}"
-ADMIN_PATH="${ADMIN_PATH#/}"
-ADMIN_PATH="${ADMIN_PATH%/}"
-
 # ─── Management Mode ───────────────────────────────────────────────────
-WEB_PANEL="yes"
 CARRIER="https"
 PROMO_TAG=""
+
+ask "Установить Web-панель управления в браузере? [Y/n]:"
+read -rp "Выбор [Y]: " USER_WEB_CHOICE
+USER_WEB_CHOICE="${USER_WEB_CHOICE:-y}"
+if [[ "${USER_WEB_CHOICE,,}" == "y" ]]; then
+  WEB_PANEL="yes"
+  DEFAULT_ADMIN_PATH="panel_$(openssl rand -hex 5)"
+  ask "Секретный путь для веб-панели (для защиты от сканеров):"
+  read -rp "Путь [${DEFAULT_ADMIN_PATH}]: " USER_ADMIN_PATH
+  ADMIN_PATH="${USER_ADMIN_PATH:-$DEFAULT_ADMIN_PATH}"
+  ADMIN_PATH="${ADMIN_PATH#/}"
+  ADMIN_PATH="${ADMIN_PATH%/}"
+else
+  WEB_PANEL="no"
+  ADMIN_PATH="disabled"
+fi
 
 # ─── Install dependencies ───────────────────────────────────────────────
 info "Устанавливаю системные зависимости..."
@@ -154,12 +160,7 @@ if [[ ! -s /etc/tproxy-server/profiles.json ]]; then
       "name": "Основное устройство",
       "secret": "${SECRET}",
       "backend": "127.0.0.1:9067",
-      "carrier_mode": "${CARRIER}",
-      "limits": {
-        "max_sessions": 1,
-        "max_streams": 32,
-        "max_streams_per_session": 32
-      }
+      "carrier_mode": "${CARRIER}"
     }
   ]
 }
@@ -293,6 +294,9 @@ install -m 0755 "${DEPLOY_DIR}/admin/admin.py" /opt/tproxy-admin/admin.py
 install -m 0755 "${DEPLOY_DIR}/admin/adminctl.py" /usr/local/sbin/tproxy-admin
 install -m 0644 "${DEPLOY_DIR}/admin/admin.html" /opt/tproxy-admin/admin.html
 
+# Устраняем символы возврата каретки Windows CRLF (\r)
+sed -i 's/\r$//' /usr/local/sbin/tproxy-admin /opt/tproxy-admin/admin.py /opt/tproxy-admin/adminctl.py /usr/local/sbin/mtproxy-launcher 2>/dev/null || true
+
 if [[ ! -s /etc/tproxy-admin.env ]]; then
   cat > /etc/tproxy-admin.env <<AEOF
 ADMIN_USER=${ADMIN_USER}
@@ -380,11 +384,13 @@ ASVC
 install -m 0644 "$WORKDIR/tproxy-server/deploy/refresh-mtproxy-config.service" /etc/systemd/system/ 2>/dev/null || true
 install -m 0644 "$WORKDIR/tproxy-server/deploy/refresh-mtproxy-config.timer" /etc/systemd/system/ 2>/dev/null || true
 install -m 0755 "$WORKDIR/tproxy-server/deploy/refresh-mtproxy-config.sh" /usr/local/sbin/refresh-mtproxy-config 2>/dev/null || true
+sed -i 's/\r$//' /usr/local/sbin/refresh-mtproxy-config 2>/dev/null || true
 
 # ─── Web Gateway (Nginx / Caddy) Setup ──────────────────────────────────
 if [[ "$GATEWAY" == "caddy" ]]; then
   CADDYFILE="/etc/caddy/Caddyfile"
-  cat > "$CADDYFILE" <<CADDYEOF
+  if [[ "$WEB_PANEL" == "yes" ]]; then
+    cat > "$CADDYFILE" <<CADDYEOF
 ${DOMAIN} {
     tls ${EMAIL}
     
@@ -400,10 +406,22 @@ ${DOMAIN} {
     }
 }
 CADDYEOF
+  else
+    cat > "$CADDYFILE" <<CADDYEOF
+${DOMAIN} {
+    tls ${EMAIL}
+    
+    handle {
+        reverse_proxy 127.0.0.1:8080
+    }
+}
+CADDYEOF
+  fi
   systemctl reload caddy 2>/dev/null || systemctl restart caddy
 else
-  # Nginx config with Custom Secret Admin Location
-  cat > "/etc/nginx/conf.d/tproxy.conf" <<NGINXEOF
+  # Nginx config
+  if [[ "$WEB_PANEL" == "yes" ]]; then
+    cat > "/etc/nginx/conf.d/tproxy.conf" <<NGINXEOF
 server {
     listen 80;
     listen [::]:80;
@@ -434,6 +452,28 @@ server {
     }
 }
 NGINXEOF
+  else
+    cat > "/etc/nginx/conf.d/tproxy.conf" <<NGINXEOF
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN};
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+}
+NGINXEOF
+  fi
 
   nginx -t && systemctl reload nginx 2>/dev/null || systemctl restart nginx
   info "Выпускаю SSL-сертификат Let's Encrypt через Certbot..."
@@ -441,17 +481,26 @@ NGINXEOF
 fi
 
 # ─── Enable & Start All Services on Boot ────────────────────────────────
-info "Включаю автозапуск всех служб при перезагрузке..."
+info "Включаю автозапуск служб..."
 systemctl daemon-reload
-systemctl enable mtproxy.service tproxy-server.service tproxy-admin.service refresh-mtproxy-config.timer
+systemctl enable mtproxy.service tproxy-server.service refresh-mtproxy-config.timer
+
+if [[ "$WEB_PANEL" == "yes" ]]; then
+  systemctl enable tproxy-admin.service
+  systemctl restart tproxy-admin.service
+else
+  systemctl stop tproxy-admin.service 2>/dev/null || true
+  systemctl disable tproxy-admin.service 2>/dev/null || true
+fi
+
 if [[ "$GATEWAY" == "caddy" ]]; then
   systemctl enable caddy
 else
   systemctl enable nginx
 fi
 
-systemctl restart mtproxy.service tproxy-server.service tproxy-admin.service
-ok "Все службы запущены и добавлены в автозагрузку!"
+systemctl restart mtproxy.service tproxy-server.service
+ok "Службы успешно запущены и добавлены в автозагрузку!"
 
 # ─── Summary ────────────────────────────────────────────────────────────
 echo -e "
@@ -460,11 +509,19 @@ ${G}  Установка успешно завершена!                     
 ${G}══════════════════════════════════════════════════════════${D}
 
 ${W}Сайт-маскировка:${D}      https://${DOMAIN}
-${W}Секретная веб-панель:${D} https://${DOMAIN}/${ADMIN_PATH}/
+"
+
+if [[ "$WEB_PANEL" == "yes" ]]; then
+echo -e "${W}Секретная веб-панель:${D} https://${DOMAIN}/${ADMIN_PATH}/
 ${W}Логин:${D}                 ${ADMIN_USER}
 ${W}Пароль:${D}                ${ADMIN_PASSWORD}
+"
+else
+echo -e "${Y}Веб-панель:${D}           Отключена (только консоль)
+"
+fi
 
-${W}Ссылка для Telegram (WEB-прокси):${D}
+echo -e "${W}Ссылка для Telegram (WEB-прокси):${D}
 https://t.me/webproxy?server=${DOMAIN}&secret=${SECRET}
 
 ${C}Управление в терминале:${D} sudo tproxy-admin
