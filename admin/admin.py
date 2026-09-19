@@ -171,6 +171,11 @@ def save_profiles_data(profiles_list):
         max_sessions = int(p.get("max_sessions", limits.get("max_sessions", 0)))
         max_streams = int(p.get("max_streams", limits.get("max_streams", 0)))
 
+        if max_sessions < 0:
+            raise ValueError(f"Лимит устройств для {name} не может быть отрицательным")
+        if max_sessions > 256:
+            raise ValueError(f"Лимит устройств для {name} равен {max_sessions}, но не может превышать 256. Укажите 0 для бесконечного количества устройств.")
+
         item = {
             "name": name,
             "secret": secret,
@@ -178,6 +183,7 @@ def save_profiles_data(profiles_list):
             "carrier_mode": carrier
         }
 
+        # 0 означает "без лимита" - в таком случае блок limits для max_sessions не создается
         if max_sessions > 0 or max_streams > 0:
             item["limits"] = {}
             if max_sessions > 0:
@@ -506,6 +512,9 @@ class Handler(BaseHTTPRequestHandler):
                 backend = str(data.get("backend", "127.0.0.1:9067")).strip()
                 max_sessions = int(data.get("max_sessions", 0))
 
+                if max_sessions < 0 or max_sessions > 256:
+                    raise ValueError("Лимит устройств должен быть от 0 (без ограничений) до 256")
+
                 if not secret:
                     secret = "dd" + secrets.token_hex(16)
 
@@ -533,6 +542,9 @@ class Handler(BaseHTTPRequestHandler):
                 secret = str(data.get("secret", "")).strip().lower()
                 backend = str(data.get("backend", "127.0.0.1:9067")).strip()
                 max_sessions = int(data.get("max_sessions", 0))
+
+                if max_sessions < 0 or max_sessions > 256:
+                    raise ValueError("Лимит устройств должен быть от 0 (без ограничений) до 256")
 
                 current = load_profiles_data()
                 found = False
